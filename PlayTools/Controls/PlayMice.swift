@@ -118,8 +118,14 @@ public class PlayMice {
         self.joystickHandler[name]?(cgDx, cgDy)
     }
 
+    public func stop() {
+        for mouse in GCMouse.mice() {
+            mouse.mouseInput?.mouseMovedHandler = { _, _, _ in}
+        }
+    }
+
     // TODO: get rid of this shit
-    let buttonIndex: [Int: Int] = [2: -1, 8: -2, 33554432: -3]
+    var buttonIndex: [Int: Int] = [2: -1, 8: -2, 33554432: -3]
 
     private func setupMouseButton(_up: Int, _down: Int) {
         AKInterface.shared!.setupMouseButton(_up, _down, dontIgnore(_:_:_:))
@@ -162,43 +168,6 @@ public class PlayMice {
             return false
         }
         return true
-    }
-}
-
-class ThumbstickCursorControl {
-    private var thumbstickVelocity: CGVector = CGVector.zero,
-                thumbstickPolling: Bool = false,
-                eventHandler: ((CGFloat, CGFloat) -> Void)!
-
-    static private func isVectorSignificant(_ vector: CGVector) -> Bool {
-        return vector.dx.magnitude + vector.dy.magnitude > 0.2
-    }
-
-    public func update(handler: ((CGFloat, CGFloat) -> Void)?, velocityX: CGFloat, velocityY: CGFloat) {
-        guard let hdlr = handler else {
-            if thumbstickPolling {
-                self.thumbstickVelocity.dx = 0
-                self.thumbstickVelocity.dy = 0
-            }
-            return
-        }
-        self.eventHandler = hdlr
-        self.thumbstickVelocity.dx = velocityX
-        self.thumbstickVelocity.dy = velocityY
-        if !thumbstickPolling {
-            DispatchQueue.main.async(execute: self.thumbstickPoll)
-            self.thumbstickPolling = true
-        }
-    }
-
-    private func thumbstickPoll() {
-        if !ThumbstickCursorControl.isVectorSignificant(self.thumbstickVelocity) {
-            self.thumbstickPolling = false
-            return
-        }
-        self.eventHandler(self.thumbstickVelocity.dx, self.thumbstickVelocity.dy)
-        DispatchQueue.main.asyncAfter(
-            deadline: DispatchTime.now() + 0.017, execute: self.thumbstickPoll)
     }
 }
 

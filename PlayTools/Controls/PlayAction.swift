@@ -19,14 +19,12 @@ class ButtonAction: Action {
     let point: CGPoint
     var id: Int?
 
-    init(keyCode: Int, keyName: String, point: CGPoint) {
+    init(keyCode: GCKeyCode, keyName: String, point: CGPoint) {
         self.keyCode = keyCode
         self.keyName = keyName
         self.point = point
-        let code = keyCode
-        let codeName = KeyCodeNames.keyCodes[code] ?? "Btn"
         // TODO: set both key names in draggable button, so as to depracate key code
-        PlayInput.registerButton(key: code == KeyCodeNames.defaultCode ? keyName: codeName, handler: self.update)
+        PlayInput.registerButton(key: KeyCodeNames.keyCodes[keyCode.rawValue]!, handler: self.update)
     }
 
     convenience init(data: Button) {

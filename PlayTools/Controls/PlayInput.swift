@@ -17,6 +17,7 @@ class PlayInput {
             action.invalidate()
         }
         PlayInput.buttonHandlers.removeAll(keepingCapacity: true)
+        GCKeyboard.coalesced!.keyboardInput!.keyChangedHandler = nil
         GCController.current?.extendedGamepad?.valueChangedHandler = nil
     }
 
@@ -27,29 +28,21 @@ class PlayInput {
         PlayInput.buttonHandlers[key]!.append(handler)
     }
 
-    func keyboardHandler(_ keyCode: UInt16, _ pressed: Bool) {
-        let name = KeyCodeNames.virtualCodes[keyCode] ?? "Btn"
-        guard let handlers = PlayInput.buttonHandlers[name] else {
-            return
-        }
+    func keyboardHandler(_: GCKeyboardInput, _: GCControllerButtonInput, keyCode: GCKeyCode, pressed: Bool) {
+        if PlayInput.cmdPressed() { return }
+        guard let handlers = PlayInput.buttonHandlers[KeyCodeNames.keyCodes[keyCode.rawValue]!] else { return }
         for handler in handlers {
             handler(pressed)
         }
     }
 
-    func controllerButtonHandler(_ profile: GCExtendedGamepad, _ element: GCControllerElement) {
+    func controllerButtonHandler(_: GCExtendedGamepad, element: GCControllerElement) {
+        guard let buttonElement = element as? GCControllerButtonInput else { return }
+        // TODO: handle analog input here too
         let name: String = element.aliases.first!
-        if let buttonElement = element as? GCControllerButtonInput {
-//            Toast.showOver(msg: "recognised controller button: \(name)")
-            guard let handlers = PlayInput.buttonHandlers[name] else { return }
-            Toast.showOver(msg: name + ": \(buttonElement.isPressed)")
-            for handler in handlers {
-                handler(buttonElement.isPressed)
-            }
-        } else if let dpadElement = element as? GCControllerDirectionPad {
-            PlayMice.shared.handleControllerDirectionPad(profile, dpadElement)
-        } else {
-            Toast.showOver(msg: "unrecognised controller element input happens")
+        guard let handlers = PlayInput.buttonHandlers[name] else { return }
+        for handler in handlers {
+            handler(buttonElement.isPressed)
         }
     }
 
@@ -93,6 +86,7 @@ class PlayInput {
                 }
             }
             if let controller = GCController.current?.extendedGamepad {
+                // TODO: direction pad is analog
                 controller.valueChangedHandler = { _, element in
                     // This is the index of controller buttons, which is String, not Int
                     var alias: String = element.aliases.first!
@@ -120,8 +114,17 @@ class PlayInput {
 
     func setup() {
         parseKeymap()
-        GCKeyboard.coalesced?.keyboardInput?.keyChangedHandler = nil
+
+        GCKeyboard.coalesced!.keyboardInput!.keyChangedHandler = keyboardHandler
         GCController.current?.extendedGamepad?.valueChangedHandler = controllerButtonHandler
+        for mouse in GCMouse.mice() {
+            if settings.mouseMapping {
+                mouse.mouseInput?.mouseMovedHandler = PlayMice.shared.handleMouseMoved
+            } else {
+                mouse.mouseInput?.mouseMovedHandler = PlayMice.shared.handleFakeMouseMoved
+            }
+        }
+
     }
 
     static public func cmdPressed() -> Bool {
@@ -200,47 +203,7 @@ class PlayInput {
             }
         }
 
-        centre.addObserver(forName: NSNotification.Name(rawValue: "NSWindowDidBecomeKeyNotification"), object: nil,
-            queue: main) { _ in
-            if !mode.visible && settings.mouseMapping {
-                AKInterface.shared!.warpCursor()
-            }
-        }
         setupHotkeys()
-        DispatchQueue.main.asyncAfter(deadline: DispatchTime.now() + 5) {
-            if !settings.mouseMapping || !mode.visible || self.actions.count <= 0 {
-                return
-            }
-            let persistenceKeyname = "playtoolsKeymappingDisabledAt"
-            let lastUse = UserDefaults.standard.float(forKey: persistenceKeyname)
-            var thisUse = lastUse
-            if lastUse < 1 {
-                thisUse = 2
-            } else {
-                thisUse = Float(Date.timeIntervalSinceReferenceDate)
-            }
-            var token2: NSObjectProtocol?
-            let center = NotificationCenter.default
-            token2 = center.addObserver(forName: NSNotification.Name.playtoolsKeymappingWillDisable,
-                                        object: nil, queue: OperationQueue.main) { _ in
-                center.removeObserver(token2!)
-                UserDefaults.standard.set(thisUse, forKey: persistenceKeyname)
-            }
-            if lastUse > Float(Date.now.addingTimeInterval(-86400*14).timeIntervalSinceReferenceDate) {
-                return
-            }
-            Toast.showHint(title: "Keymapping Disabled", text: ["Press ", "option ⌥", " to enable keymapping"],
-                           timeout: 10,
-                           notification: NSNotification.Name.playtoolsKeymappingWillEnable)
-            var token: NSObjectProtocol?
-            token = center.addObserver(forName: NSNotification.Name.playtoolsKeymappingWillEnable,
-                                       object: nil, queue: OperationQueue.main) { _ in
-                center.removeObserver(token!)
-                Toast.showHint(title: "Keymapping Enabled", text: ["Press ", "option ⌥", " to disable keymapping"],
-                               timeout: 10,
-                               notification: NSNotification.Name.playtoolsKeymappingWillDisable)
-            }
-        }
 
         AKInterface.shared!.initialize(keyboard: {keycode, pressed, isRepeat in
             if mode.visible || PlayInput.cmdPressed() {
